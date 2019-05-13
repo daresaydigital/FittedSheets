@@ -32,7 +32,7 @@ public class SheetViewController: UIViewController {
         didSet {
             guard isViewLoaded else { return }
             self.pullBarView.backgroundColor = extendBackgroundBehindHandle ? childViewController.view.backgroundColor : UIColor.clear
-            self.updateRoundedCorners()
+            self.updateLegacyRoundedCorners()
         }
     }
     
@@ -48,7 +48,7 @@ public class SheetViewController: UIViewController {
     public var topCornersRadius: CGFloat = 3 {
         didSet {
             guard isViewLoaded else { return }
-            self.updateRoundedCorners()
+            self.updateLegacyRoundedCorners()
         }
     }
     
@@ -127,7 +127,7 @@ public class SheetViewController: UIViewController {
       
         self.setUpPullBarView()
         self.setUpChildViewController()
-        self.updateRoundedCorners()
+        self.updateLegacyRoundedCorners()
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardShown(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardDismissed(_:)), name: UIResponder.keyboardWillHideNotification, object: nil)
     }
@@ -168,14 +168,19 @@ public class SheetViewController: UIViewController {
     
     /// Because iOS 10 doesn't support the better rounded corners implementation, we need to fake it here. This can be deleted once iOS 10 support is dropped.
     private func updateLegacyRoundedCorners() {
+        guard let controllerWithRoundedCorners = extendBackgroundBehindHandle ? self.containerView : self.childViewController.view,
+            let controllerWithoutRoundedCorners = extendBackgroundBehindHandle ? self.childViewController.view : self.containerView else { return }
         if #available(iOS 11.0, *) {
-            self.childViewController.view.layer.maskedCorners = [.layerMaxXMinYCorner, .layerMinXMinYCorner]
+            controllerWithRoundedCorners.layer.maskedCorners = self.topCornersRadius > 0 ? [.layerMaxXMinYCorner, .layerMinXMinYCorner] : []
+            controllerWithRoundedCorners.layer.cornerRadius = self.topCornersRadius
+            controllerWithoutRoundedCorners.layer.maskedCorners = []
+            controllerWithoutRoundedCorners.layer.cornerRadius = 0
         } else {
             // iOS 10 doesn't have the better rounded corner feature so we need to fake it
-            let path = UIBezierPath(roundedRect: self.childViewController.view.bounds, byRoundingCorners: [.topLeft, .topRight], cornerRadii: CGSize(width: 10, height: 10))
+            let path = UIBezierPath(roundedRect: controllerWithRoundedCorners.bounds, byRoundingCorners: [.topLeft, .topRight], cornerRadii: CGSize(width: self.topCornersRadius, height: self.topCornersRadius))
             let maskLayer = CAShapeLayer()
             maskLayer.path = path.cgPath
-            self.childViewController.view.layer.mask = maskLayer
+            controllerWithRoundedCorners.layer.mask = maskLayer
         }
     }
     
@@ -239,18 +244,6 @@ public class SheetViewController: UIViewController {
                 subview.edges(.bottom, .left, .right).pinToSuperview()
                 subview.height.set(bottomInset)
             }
-        }
-    }
-    
-    /// Updates which view has rounded corners (only supported on iOS 11)
-    private func updateRoundedCorners() {
-        if #available(iOS 11.0, *) {
-            let controllerWithRoundedCorners = extendBackgroundBehindHandle ? self.containerView : self.childViewController.view
-            let controllerWithoutRoundedCorners = extendBackgroundBehindHandle ? self.childViewController.view : self.containerView
-            controllerWithRoundedCorners?.layer.maskedCorners = self.topCornersRadius > 0 ? [.layerMaxXMinYCorner, .layerMinXMinYCorner] : []
-            controllerWithRoundedCorners?.layer.cornerRadius = self.topCornersRadius
-            controllerWithoutRoundedCorners?.layer.maskedCorners = []
-            controllerWithoutRoundedCorners?.layer.cornerRadius = 0
         }
     }
     
