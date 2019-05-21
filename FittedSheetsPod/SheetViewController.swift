@@ -8,7 +8,13 @@
 
 import UIKit
 
+public enum SheetViewMode {
+    case top
+    case bottom
+}
+
 public class SheetViewController: UIViewController {
+    public private(set) var sheetViewMode = SheetViewMode.bottom
     // MARK: - Public Properties
     public private(set) var childViewController: UIViewController!
     
@@ -77,7 +83,7 @@ public class SheetViewController: UIViewController {
     private weak var childScrollView: UIScrollView?
     
     private var containerHeightConstraint: NSLayoutConstraint!
-    private var containerBottomConstraint: NSLayoutConstraint!
+    private var containerBottomConstraint: NSLayoutConstraint?
     private var keyboardHeight: CGFloat = 0
     
     private var safeAreaInsets: UIEdgeInsets {
@@ -100,8 +106,9 @@ public class SheetViewController: UIViewController {
     }
     
     /// Initialize the sheet view controller with a child. This is the only initializer that will function properly.
-    public convenience init(controller: UIViewController, sizes: [SheetSize] = []) {
+    public convenience init(controller: UIViewController, sizes: [SheetSize] = [], sheetViewMode: SheetViewMode = .bottom) {
         self.init(nibName: nil, bundle: nil)
+        self.sheetViewMode = sheetViewMode
         self.childViewController = controller
         if sizes.count > 0 {
             self.setSizes(sizes, animated: false)
@@ -128,8 +135,10 @@ public class SheetViewController: UIViewController {
         self.setUpPullBarView()
         self.setUpChildViewController()
         self.updateLegacyRoundedCorners()
-        NotificationCenter.default.addObserver(self, selector: #selector(keyboardShown(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(keyboardDismissed(_:)), name: UIResponder.keyboardWillHideNotification, object: nil)
+        if isBottomSheet() {
+            NotificationCenter.default.addObserver(self, selector: #selector(keyboardShown(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+            NotificationCenter.default.addObserver(self, selector: #selector(keyboardDismissed(_:)), name: UIResponder.keyboardWillHideNotification, object: nil)
+        }
     }
     
     public override func viewWillAppear(_ animated: Bool) {
@@ -171,13 +180,15 @@ public class SheetViewController: UIViewController {
         guard let controllerWithRoundedCorners = extendBackgroundBehindHandle ? self.containerView : self.childViewController.view,
             let controllerWithoutRoundedCorners = extendBackgroundBehindHandle ? self.childViewController.view : self.containerView else { return }
         if #available(iOS 11.0, *) {
-            controllerWithRoundedCorners.layer.maskedCorners = self.topCornersRadius > 0 ? [.layerMaxXMinYCorner, .layerMinXMinYCorner] : []
+            let corners: CACornerMask = isBottomSheet() ? [.layerMaxXMinYCorner, .layerMinXMinYCorner] : [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
+            controllerWithRoundedCorners.layer.maskedCorners = self.topCornersRadius > 0 ? corners : []
             controllerWithRoundedCorners.layer.cornerRadius = self.topCornersRadius
             controllerWithoutRoundedCorners.layer.maskedCorners = []
             controllerWithoutRoundedCorners.layer.cornerRadius = 0
         } else {
             // iOS 10 doesn't have the better rounded corner feature so we need to fake it
-            let path = UIBezierPath(roundedRect: controllerWithRoundedCorners.bounds, byRoundingCorners: [.topLeft, .topRight], cornerRadii: CGSize(width: self.topCornersRadius, height: self.topCornersRadius))
+            let corners: UIRectCorner = isBottomSheet() ? [.topLeft, .topRight] : [.bottomLeft, .bottomRight]
+            let path = UIBezierPath(roundedRect: controllerWithRoundedCorners.bounds, byRoundingCorners: corners, cornerRadii: CGSize(width: self.topCornersRadius, height: self.topCornersRadius))
             let maskLayer = CAShapeLayer()
             maskLayer.path = path.cgPath
             controllerWithRoundedCorners.layer.mask = maskLayer
@@ -195,20 +206,32 @@ public class SheetViewController: UIViewController {
     private func setUpContainerView() {
         self.view.addSubview(self.containerView) { (subview) in
             subview.edges(.left, .right).pinToSuperview()
-            self.containerBottomConstraint = subview.bottom.pinToSuperview()
-            subview.top.pinToSuperview(inset: self.safeAreaInsets.top + 20, relation: .greaterThanOrEqual)
+            
             self.containerHeightConstraint = subview.height.set(self.height(for: self.containerSize))
             self.containerHeightConstraint.priority = UILayoutPriority(900)
+            if isBottomSheet() {
+                self.containerBottomConstraint = subview.bottom.pinToSuperview()
+                subview.top.pinToSuperview(inset: self.safeAreaInsets.top + 20, relation: .greaterThanOrEqual)
+            } else {
+                subview.top.pinToSuperview()
+                subview.bottom.pinToSuperview(inset: self.safeAreaInsets.top + 20, relation: .greaterThanOrEqual)
+            }
         }
+        
+        // if this doesn't work try with UIScreen.main.bounds.height
+        let startOffsetY = isBottomSheet() ? self.view.frame.height : -self.view.frame.height
         self.containerView.layer.masksToBounds = true
         self.containerView.backgroundColor = UIColor.clear
-        self.containerView.transform = CGAffineTransform(translationX: 0, y: UIScreen.main.bounds.height)
+        self.containerView.transform = CGAffineTransform(translationX: 0, y: startOffsetY)
         
-        self.view.addSubview(UIView(frame: CGRect.zero)) { subview in
-            subview.edges(.left, .right, .bottom).pinToSuperview()
-            subview.height.set(0).priority = UILayoutPriority(100)
-            subview.top.align(with: self.containerView.al.bottom)
-            subview.base.backgroundColor = UIColor.white
+        
+        if isBottomSheet() {
+            self.view.addSubview(UIView(frame: CGRect.zero)) { subview in
+                subview.edges(.left, .right, .bottom).pinToSuperview()
+                subview.height.set(0).priority = UILayoutPriority(100)
+                subview.top.align(with: self.containerView.al.bottom)
+                subview.base.backgroundColor = UIColor.white
+            }
         }
     }
     
@@ -218,19 +241,24 @@ public class SheetViewController: UIViewController {
         let bottomInset = self.safeAreaInsets.bottom
         self.containerView.addSubview(self.childViewController.view) { (subview) in
             subview.edges(.left, .right).pinToSuperview()
-            if self.adjustForBottomSafeArea {
-                subview.bottom.pinToSuperview(inset: bottomInset, relation: .equal)
+            if isBottomSheet() {
+                if self.adjustForBottomSafeArea {
+                    subview.bottom.pinToSuperview(inset: bottomInset, relation: .equal)
+                } else {
+                    subview.bottom.pinToSuperview()
+                }
+                subview.top.align(with: self.pullBarView.al.bottom)
             } else {
-                subview.bottom.pinToSuperview()
+                subview.top.pinToSuperview()
+                subview.bottom.align(with: self.pullBarView.al.top)
             }
-            subview.top.align(with: self.pullBarView.al.bottom)
         }
         
         self.childViewController.view.layer.masksToBounds = true
         
         self.childViewController.didMove(toParent: self)
         
-        if self.adjustForBottomSafeArea, bottomInset > 0 {
+        if self.adjustForBottomSafeArea, isBottomSheet(), bottomInset > 0 {
             // Add white background over bottom bar
             self.containerView.addSubview(UIView(frame: CGRect.zero)) { subview in
                 subview.base.backgroundColor = UIColor.white
@@ -250,8 +278,14 @@ public class SheetViewController: UIViewController {
     private func setUpDismissView() {
         let dismissAreaView = UIView(frame: CGRect.zero)
         self.view.addSubview(dismissAreaView, containerView) { (dismissAreaView, containerView) in
-            dismissAreaView.edges(.top, .left, .right).pinToSuperview()
-            dismissAreaView.bottom.align(with: containerView.top)
+            if isBottomSheet() {
+                dismissAreaView.edges(.top, .left, .right).pinToSuperview()
+                dismissAreaView.bottom.align(with: containerView.top)
+            } else {
+                dismissAreaView.edges(.bottom, .left, .right).pinToSuperview()
+                dismissAreaView.top.align(with: containerView.bottom)
+            }
+            
         }
         dismissAreaView.backgroundColor = UIColor.clear
         dismissAreaView.isUserInteractionEnabled = true
@@ -262,7 +296,12 @@ public class SheetViewController: UIViewController {
     
     private func setUpPullBarView() {
         self.containerView.addSubview(self.pullBarView) { (subview) in
-            subview.edges(.top, .left, .right).pinToSuperview()
+            if isBottomSheet() {
+                subview.edges(.top, .left, .right).pinToSuperview()
+            } else {
+                subview.edges(.bottom, .left, .right).pinToSuperview()
+            }
+            
         }
         
         self.pullBarView.addSubview(handleView) { (subview) in
@@ -285,9 +324,11 @@ public class SheetViewController: UIViewController {
     }
     
     /// Animates the sheet to the closed state and then dismisses the view controller
-    public func closeSheet(completion: (() -> Void)? = nil) {
-        UIView.animate(withDuration: 0.3, delay: 0, options: [.curveEaseIn], animations: { [weak self] in
-            self?.containerView.transform = CGAffineTransform(translationX: 0, y: self?.containerView.frame.height ?? 0)
+    public func closeSheet(withDuration duration: TimeInterval = 0.3, completion: (() -> Void)? = nil) {
+        UIView.animate(withDuration: duration, delay: 0, options: [.curveEaseIn], animations: { [weak self] in
+            let containerHeight = self?.containerView.frame.height ?? 0
+            let endOffsetY = self?.isBottomSheet() ?? true ? containerHeight : -containerHeight
+            self?.containerView.transform = CGAffineTransform(translationX: 0, y: endOffsetY)
             self?.view.backgroundColor = UIColor.clear
         }, completion: { [weak self] complete in
             self?.dismiss(animated: false, completion: completion)
@@ -309,15 +350,26 @@ public class SheetViewController: UIViewController {
             self.actualContainerSize = .fixed(self.containerView.frame.height)
         }
         
+        
         let minHeight = min(self.height(for: self.actualContainerSize), self.height(for: self.orderedSheetSizes.first))
         let maxHeight = max(self.height(for: self.actualContainerSize), self.height(for: self.orderedSheetSizes.last))
         
-        var newHeight = max(0, self.height(for: self.actualContainerSize) + (self.firstPanPoint.y - point.y))
         var offset: CGFloat = 0
-        if newHeight < minHeight {
-            offset = minHeight - newHeight
-            newHeight = minHeight
+        var newHeight: CGFloat = 0
+        if isBottomSheet() {
+            newHeight = max(0, self.height(for: self.actualContainerSize) + (self.firstPanPoint.y - point.y))
+            if newHeight < minHeight {
+                offset = minHeight - newHeight
+                newHeight = minHeight
+            }
+        } else {
+            newHeight = max(0, self.height(for: self.actualContainerSize) - (self.firstPanPoint.y - point.y))
+            if newHeight < minHeight {
+                offset = newHeight - minHeight
+                newHeight = minHeight
+            }
         }
+        
         if newHeight > maxHeight {
             newHeight = maxHeight
         }
@@ -329,7 +381,13 @@ public class SheetViewController: UIViewController {
             }, completion: nil)
         } else if gesture.state == .ended {
             let velocity = (0.2 * gesture.velocity(in: self.view).y)
-            var finalHeight = newHeight - offset - velocity
+            var finalHeight: CGFloat = 0
+            if isBottomSheet() {
+                finalHeight = newHeight - offset - velocity
+            } else {
+                finalHeight = newHeight + offset + velocity
+            }
+            
             if velocity > 500 {
                 // They swiped hard, always just close the sheet when they do
                 finalHeight = -1
@@ -339,17 +397,12 @@ public class SheetViewController: UIViewController {
             
             guard finalHeight >= (minHeight / 2) else {
                 // Dismiss
-                UIView.animate(withDuration: animationDuration, delay: 0, options: [.curveEaseOut], animations: { [weak self] in
-                    self?.containerView.transform = CGAffineTransform(translationX: 0, y: self?.containerView.frame.height ?? 0)
-                    self?.view.backgroundColor = UIColor.clear
-                }, completion: { [weak self] complete in
-                    self?.dismiss(animated: false, completion: nil)
-                })
+                closeSheet(withDuration: animationDuration)
                 return
             }
             
             var newSize = self.containerSize
-            if point.y < 0 {
+            if (isBottomSheet() && point.y < 0) || (!isBottomSheet() && point.y > 0) {
                 // We need to move to the next larger one
                 newSize = self.orderedSheetSizes.last ?? self.containerSize
                 for size in self.orderedSheetSizes.reversed() {
@@ -385,7 +438,7 @@ public class SheetViewController: UIViewController {
                 self.containerHeightConstraint.constant = newHeight
             }
             
-            if offset > 0 {
+            if (isBottomSheet() && offset > 0) || (!isBottomSheet() && offset < 0) {
                 self.containerView.transform = CGAffineTransform(translationX: 0, y: offset)
             } else {
                 self.containerView.transform = CGAffineTransform.identity
@@ -407,7 +460,7 @@ public class SheetViewController: UIViewController {
     }
     
     private func adjustForKeyboard(height: CGFloat, from notification: Notification) {
-        guard let info:[AnyHashable: Any] = notification.userInfo else { return }
+        guard let info:[AnyHashable: Any] = notification.userInfo, let containerBottomConstraint =  self.containerBottomConstraint else { return }
         self.keyboardHeight = height
         
         let duration:TimeInterval = (info[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue ?? 0
@@ -416,7 +469,7 @@ public class SheetViewController: UIViewController {
         let animationCurve:UIView.AnimationOptions = UIView.AnimationOptions(rawValue: animationCurveRaw)
         
         UIView.animate(withDuration: duration, delay: 0, options: animationCurve, animations: {
-            self.containerBottomConstraint.constant = min(0, -height + (self.adjustForBottomSafeArea ? self.safeAreaInsets.bottom : 0))
+            containerBottomConstraint.constant = min(0, -height + (self.adjustForBottomSafeArea ? self.safeAreaInsets.bottom : 0))
             // Tell our child view it needs to layout again to prevent the navigation bar from moving to the wrong spot if in a UINavigationController
             self.childViewController.view.setNeedsLayout()
             self.view.layoutIfNeeded()
@@ -440,6 +493,10 @@ public class SheetViewController: UIViewController {
             case .halfScreen:
                 return (UIScreen.main.bounds.height) / 2 + 24
         }
+    }
+    
+    private func isBottomSheet() -> Bool {
+        return self.sheetViewMode == .bottom
     }
 }
 

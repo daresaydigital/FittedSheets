@@ -28,13 +28,13 @@ class ExamplesViewController: UIViewController {
         
         addExample("Color Tests", controller: { ColorExampleViewController.instantiate() })
         addExample("Scroll View", controller: { ScrollViewExampleViewController.instantiate() })
-        addExample("Table View", controller: { TableViewExampleViewController.instantiate() })
+        addExample("Table View", controller: { TableViewExampleViewController.instantiate() }, mode: .top)
         addExample("Table View Controller", controller: { ExampleTableViewController.instantiate() })
         addExample("Intrinsic Height", controller: { IntrinsicExampleViewController.instantiate() })
         addExample("Self Resizing", controller: { ResizingExampleViewController.instantiate() })
     }
     
-    func addExample(_ name: String, controller: @escaping () -> UIViewController) {
+    func addExample(_ name: String, controller: @escaping () -> UIViewController, mode: SheetViewMode = .bottom) {
         let button = UIButton(type: .custom)
         button.setTitle(name, for: .normal)
         button.onTap { [weak self] in
@@ -60,7 +60,7 @@ class ExamplesViewController: UIViewController {
                 controller = UINavigationController(rootViewController: controller)
             }
             
-            let sheetController = SheetViewController(controller: controller, sizes: sizes)
+            let sheetController = SheetViewController(controller: controller, sizes: sizes, sheetViewMode: mode)
             sheetController.adjustForBottomSafeArea = self.adjustForBottomSafeAreaSwitch.isOn
             sheetController.blurBottomSafeArea = self.blurBottomSafeAreaSwitch.isOn
             sheetController.dismissOnBackgroundTap = self.dismissOnBackgroundTapSwitch.isOn
