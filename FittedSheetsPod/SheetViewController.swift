@@ -31,6 +31,10 @@ public class SheetViewController: UIViewController {
     public var handleTopEdgeInset: CGFloat = 9
     public var handleBottomEdgeInset: CGFloat = 9
     
+    public var pullBarHeight: CGFloat {
+        return handleBottomEdgeInset + handleTopEdgeInset + handleSize.height
+    }
+    
     /// If true, tapping on the overlay above the sheet will dismiss the sheet view controller
     public var dismissOnBackgroundTap: Bool = true
     
@@ -495,7 +499,7 @@ public class SheetViewController: UIViewController {
             case .fullScreen:
                 return maxHeight
             case .halfScreen:
-                return self.view.frame.height / 2 + 24
+                return self.view.frame.height / 2 + pullBarHeight
         }
     }
     
