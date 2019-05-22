@@ -91,7 +91,11 @@ public class SheetViewController: UIViewController {
         if #available(iOS 11.0, *) {
             inserts = UIApplication.shared.keyWindow?.safeAreaInsets ?? inserts
         }
-        inserts.top = max(inserts.top, 20)
+        if isBottomSheet() {
+            inserts.top = max(inserts.top, 20)
+        } else {
+            inserts.bottom = max(inserts.bottom, 20)
+        }
         return inserts
     }
     
@@ -214,7 +218,7 @@ public class SheetViewController: UIViewController {
                 subview.top.pinToSuperview(inset: self.safeAreaInsets.top + 20, relation: .greaterThanOrEqual)
             } else {
                 subview.top.pinToSuperview()
-                subview.bottom.pinToSuperview(inset: self.safeAreaInsets.top + 20, relation: .greaterThanOrEqual)
+                subview.bottom.pinToSuperview(inset: self.safeAreaInsets.bottom + 20, relation: .greaterThanOrEqual)
             }
         }
         
@@ -301,7 +305,6 @@ public class SheetViewController: UIViewController {
             } else {
                 subview.edges(.bottom, .left, .right).pinToSuperview()
             }
-            
         }
         
         self.pullBarView.addSubview(handleView) { (subview) in
@@ -484,14 +487,15 @@ public class SheetViewController: UIViewController {
     
     private func height(for size: SheetSize?) -> CGFloat {
         guard let size = size else { return 0 }
+        let inset = self.isBottomSheet() ? self.safeAreaInsets.top : self.safeAreaInsets.bottom
+        let maxHeight = self.view.frame.height - inset - 20
         switch (size) {
             case .fixed(let height):
-                return height
+                return min(height, maxHeight)
             case .fullScreen:
-                let insets = self.safeAreaInsets
-                return UIScreen.main.bounds.height - insets.top - 20
+                return maxHeight
             case .halfScreen:
-                return (UIScreen.main.bounds.height) / 2 + 24
+                return self.view.frame.height / 2 + 24
         }
     }
     
