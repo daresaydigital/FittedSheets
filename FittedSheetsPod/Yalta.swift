@@ -155,14 +155,14 @@ extension Anchor where Type: AnchorType.Edge {
             case .bottom: (item2, attr2) = (vc.bottomLayoutGuide, .top)
                 // There are no layout guides for .left and .right, so just pin
             // to the superview instead.
-            default: (item2, attr2) = (vc.view!, self.attribute)
+            default: (item2, attr2) = (vc.view as Any, self.attribute)
             }
         }
         return _pin(to: item2, attribute: attr2, inset: inset, relation: relation)
     }
     
     // Pin the anchor to another layout item.
-    private func _pin(to item2: Any, attribute attr2: NSLayoutConstraint.Attribute, inset: CGFloat, relation: NSLayoutConstraint.Relation) -> NSLayoutConstraint {
+    private func _pin(to item2: Any?, attribute attr2: NSLayoutConstraint.Attribute, inset: CGFloat, relation: NSLayoutConstraint.Relation) -> NSLayoutConstraint {
         // Invert attribute and relation in certain cases. The `pin` semantics
         // are inspired by https://github.com/PureLayout/PureLayout
         let isInverted = [.trailing, .right, .bottom].contains(attribute)

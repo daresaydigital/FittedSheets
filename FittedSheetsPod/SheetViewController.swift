@@ -143,10 +143,10 @@ public class SheetViewController: UIViewController {
         self.setUpPullBarView()
         self.setUpChildViewController()
         self.updateLegacyRoundedCorners()
-        if isBottomSheet {
-            NotificationCenter.default.addObserver(self, selector: #selector(keyboardShown(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
-            NotificationCenter.default.addObserver(self, selector: #selector(keyboardDismissed(_:)), name: UIResponder.keyboardWillHideNotification, object: nil)
-        }
+        
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardShown(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardDismissed(_:)), name: UIResponder.keyboardWillHideNotification, object: nil)
+        
     }
     
     public override func viewWillAppear(_ animated: Bool) {
@@ -169,11 +169,11 @@ public class SheetViewController: UIViewController {
         self.resize(to: sizes[0], animated: animated)
     }
     
-    public func resize(to size: SheetSize, animated: Bool = true) {
+    public func resize(to size: SheetSize, animated: Bool = true, adjustmentForKeyboard: CGFloat = 0) {
         if animated {
             UIView.animate(withDuration: 0.2, delay: 0, options: [.curveEaseOut], animations: { [weak self] in
                 guard let self = self, let constraint = self.containerHeightConstraint else { return }
-                constraint.constant = self.height(for: size)
+                constraint.constant = self.height(for: size, adjustmentForKeyboard: adjustmentForKeyboard)
                 self.view.layoutIfNeeded()
             }, completion: nil)
         } else {
@@ -194,12 +194,13 @@ public class SheetViewController: UIViewController {
             controllerWithoutRoundedCorners.layer.maskedCorners = []
             controllerWithoutRoundedCorners.layer.cornerRadius = 0
         } else {
+            // TODO Fix this for IOS 10
             // iOS 10 doesn't have the better rounded corner feature so we need to fake it
-            let corners: UIRectCorner = isBottomSheet ? [.topLeft, .topRight] : [.bottomLeft, .bottomRight]
-            let path = UIBezierPath(roundedRect: controllerWithRoundedCorners.bounds, byRoundingCorners: corners, cornerRadii: CGSize(width: self.topCornersRadius, height: self.topCornersRadius))
-            let maskLayer = CAShapeLayer()
-            maskLayer.path = path.cgPath
-            controllerWithRoundedCorners.layer.mask = maskLayer
+//            let corners: UIRectCorner = isBottomSheet ? [.topLeft, .topRight] : [.bottomLeft, .bottomRight]
+//            let path = UIBezierPath(roundedRect: controllerWithRoundedCorners.bounds, byRoundingCorners: corners, cornerRadii: CGSize(width: self.topCornersRadius, height: self.topCornersRadius))
+//            let maskLayer = CAShapeLayer()
+//            maskLayer.path = path.cgPath
+//            controllerWithRoundedCorners.layer.mask = maskLayer
         }
     }
     
@@ -474,11 +475,16 @@ public class SheetViewController: UIViewController {
         let animationCurveRaw = animationCurveRawNSN?.uintValue ?? UIView.AnimationOptions.curveEaseInOut.rawValue
         let animationCurve:UIView.AnimationOptions = UIView.AnimationOptions(rawValue: animationCurveRaw)
         
-        UIView.animate(withDuration: duration, delay: 0, options: animationCurve, animations: {
-            containerBottomConstraint.constant = min(0, -height + (self.adjustForBottomSafeArea ? self.safeAreaInsets.bottom : 0))
-            // Tell our child view it needs to layout again to prevent the navigation bar from moving to the wrong spot if in a UINavigationController
-            self.childViewController.view.setNeedsLayout()
-            self.view.layoutIfNeeded()
+        UIView.animate(withDuration: duration, delay: 0, options: animationCurve, animations: { [weak self] in
+            guard let self = self else { return }
+            if self.isBottomSheet {
+                containerBottomConstraint.constant = min(0, -height + (self.adjustForBottomSafeArea ? self.safeAreaInsets.bottom : 0))
+                // Tell our child view it needs to layout again to prevent the navigation bar from moving to the wrong spot if in a UINavigationController
+                self.childViewController.view.setNeedsLayout()
+                self.view.layoutIfNeeded()
+            } else {
+                self.resize(to: self.containerSize, adjustmentForKeyboard: height)
+            }
         }, completion: nil)
     }
     
@@ -488,10 +494,10 @@ public class SheetViewController: UIViewController {
         self.childScrollView = scrollView
     }
     
-    private func height(for size: SheetSize?) -> CGFloat {
+    private func height(for size: SheetSize?, adjustmentForKeyboard: CGFloat = 0) -> CGFloat {
         guard let size = size else { return 0 }
         let inset = self.isBottomSheet ? self.safeAreaInsets.top : self.safeAreaInsets.bottom
-        let maxHeight = self.view.frame.height - inset - 20
+        let maxHeight = self.view.frame.height - inset - adjustmentForKeyboard - 20
         switch (size) {
             case .fixed(let height):
                 return min(height, maxHeight)
